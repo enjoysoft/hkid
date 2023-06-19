@@ -2,33 +2,39 @@ import requests
 import json
 import schedule
 import time
-
 from datetime import datetime
 
-TITLE = '发现预约空位'
-TITLE_NOT_FOUND = '没有' + TITLE
-ITEM = "- {date}，办事处：{office_name}\n"
-ITEM_Y = "- (少量){date}，办事处：{office_name}\n"
-TEXT = f" https://www.gov.hk/en/apps/immdicbooking2.htm \n\n"
+# contants
+MESSAGE_NOT_FOUND = '没有发现空位'
+ITEM = "{date}，{office}\n"
+ITEM_Y = "{date}，{office} (少量)\n"
+MESSAGE_BOOKING = "https://www.gov.hk/en/apps/immdicbooking2.htm \n\n"
 URL = "https://eservices.es2.immd.gov.hk/surgecontrolgate/ticket/getSituation"
-EXCEPTION = "服务器忙"
-
-# bool value, True if found available
-FOUND = False
+MESSAGE_EXCEPTION = "服务器忙"
 QUOTA_G = 'quota-g'  # quota available flag
 QUOTA_Y = 'quota-y'  # limited quota flag
+
+# fill in your token from https://pushover.net and install the app on ios
+TOKEN = '???'
+USER = '???'
 
 
 def send_message(message=None):
     # define message sender here
     print(datetime.now().strftime('%d/%m/%Y %H:%M:%S'), message)
+    if message != MESSAGE_NOT_FOUND:
+        # use push over service as example
+        r = requests.post("https://api.pushover.net/1/messages.json",
+                          data={'token': TOKEN,
+                                'user': USER,
+                                'message': message})
+        print(r)
 
 
 def get_reservation():
     """
     get the reservation from the restful
     """
-
     payload = {}
 
     # to be mac
@@ -56,25 +62,41 @@ def get_reservation():
         data = r['data']
         return offices, data
     except KeyError:
-        send_message(EXCEPTION)
+        send_message(MESSAGE_EXCEPTION)
         exit()
 
 
+# define scan date range
+START_DATE = "10/01/2023"
+END_DATE = "10/05/2023"
+
+#define office filter
+# YLO 元朗
+# TMO 屯门
+# FTO 火炭
+# RKT 观塘
+# RKO 九龙
+# RHK 港岛
+OFFICE = ["RHK", "RKO"]
+
 def peek():
     offices, reserve = get_reservation()
-    text = TEXT
+    text = ""
     for data in reserve:
+        if data['officeId'] not in OFFICE or (data['date'] < START_DATE) or (data['date'] > END_DATE):
+            continue
         if data['quotaR'] == QUOTA_G:
-            office_name = offices[data['officeId']]
-            text += ITEM.format(date=data['date'], office_name=office_name)
+            office = offices[data['officeId']]
+            text += ITEM.format(date=data['date'], office=office)
         elif data['quotaR'] == QUOTA_Y:
-            office_name = offices[data['officeId']]
-            text += ITEM_Y.format(date=data['date'], office_name=office_name)
-    send_message(TITLE_NOT_FOUND if text == TEXT else text)
+            office = offices[data['officeId']]
+            text += ITEM_Y.format(date=data['date'], office=office)
+
+    send_message(MESSAGE_NOT_FOUND if text == "" else text + MESSAGE_BOOKING)
 
 
 # the page would allow
-schedule.every(15).minutes.do(peek)
+schedule.every(5).minutes.do(peek)
 
 peek()
 while True:
